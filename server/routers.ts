@@ -20,6 +20,7 @@ import {
   acknowledgeAlert,
   getStrategyAlerts,
   getStrategyPerformance,
+  createAgentDecision,
 } from "./db";
 import { tradingOrchestrator } from './services/tradingOrchestrator';
 import { tradingLoopManager } from './services/tradingLoop';
@@ -395,6 +396,73 @@ export const appRouter = router({
     allStatus: protectedProcedure.query(() => {
       return tradingLoopManager.getLoopStatus();
     }),
+  }),
+
+  // Manual analysis trigger (for testing)
+  analysis: router({
+    run: protectedProcedure
+      .input(z.object({ 
+        strategyId: z.string(),
+        symbol: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        // Run a single analysis cycle
+        const strategy = await getStrategy(input.strategyId);
+        if (!strategy) {
+          throw new Error('Strategy not found');
+        }
+
+        // Get market data
+        const currentPrice = await MarketDataService.getCurrentPrice(input.symbol);
+        const { data, indicators } = await MarketDataService.getDataWithIndicators(input.symbol, '3mo', '1d');
+
+        // Run agent analysis
+        const { AgentOrchestrator } = await import('./services/agents');
+        const orchestrator = new AgentOrchestrator();
+        
+        const signal = await orchestrator.analyzeAndDecide({
+          symbol: input.symbol,
+          currentPrice,
+          indicators,
+          strategy: {
+            riskLevel: strategy.riskLevel,
+            maxPositionSize: strategy.maxPositionSize,
+            stopLossPercent: 5, // Default 5% stop loss
+          },
+          portfolio: {
+            totalValue: 100000,
+            availableCash: 50000,
+            currentPositions: 0,
+          },
+        });
+
+        // Save decision to database (trader's final decision)
+        await createAgentDecision({
+          id: `decision_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          strategyId: input.strategyId,
+          symbol: input.symbol,
+          agentType: 'trader',
+          recommendation: signal.action as any, // Map action to recommendation
+          confidence: Math.round(signal.confidence * 100),
+          reasoning: signal.reasoning,
+          metrics: JSON.stringify({
+            agentReports: signal.agentReports,
+            marketData: {
+              price: currentPrice,
+              indicators,
+            },
+          }),
+        });
+
+        return {
+          success: true,
+          decision: signal,
+          marketData: {
+            price: currentPrice,
+            indicators,
+          },
+        };
+      }),
   }),
 });
 
