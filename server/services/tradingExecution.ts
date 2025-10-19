@@ -1,311 +1,305 @@
-import { randomUUID } from "crypto";
-import { createOrder, createPosition, updatePosition, closePosition, getOpenPositions, updateOrder } from "../db";
-import { InsertOrder, InsertPosition, Position } from "../../drizzle/schema";
-import { TradeSignal } from "./agents";
-import { calculatePositionSize, PositionSizeCalculation } from "./riskManagement";
-
 /**
- * Trading Execution Service
- * Handles order placement, fills, and position management
+ * Trading Execution Service - Handles actual trade execution through brokers
+ * Integrates with mock/paper/live brokers
  */
 
-export interface OrderResult {
-  orderId: string;
-  positionId?: string;
-  status: "filled" | "pending" | "rejected";
-  filledPrice?: number;
-  message: string;
+import { getBroker, OrderRequest, OrderResponse, Position } from './brokers';
+import { getDb } from '../db';
+import { orders, positions, InsertOrder, InsertPosition } from '../../drizzle/schema';
+import { eq, and } from 'drizzle-orm';
+
+export interface TradeSignal {
+  strategyId: string;
+  symbol: string;
+  action: 'buy' | 'sell' | 'hold';
+  quantity?: number;
+  price?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  reasoning: string;
+  confidence: number;
 }
 
-/**
- * Execute a buy order
- */
-export async function executeBuyOrder(
-  signal: TradeSignal,
-  strategyId: string,
-  userId: string,
-  currentPrice: number,
-  positionSize: PositionSizeCalculation
-): Promise<OrderResult> {
-  const orderId = randomUUID();
-  const positionId = randomUUID();
-
-  try {
-    // Create order record
-    const order: InsertOrder = {
-      id: orderId,
-      userId,
-      strategyId,
-      positionId,
-      symbol: signal.symbol,
-      side: "buy",
-      type: "market",
-      quantity: positionSize.quantity,
-      filledQuantity: 0,
-      status: "pending",
-    };
-
-    await createOrder(order);
-
-    // Simulate order execution (in production, this would call broker API)
-    const slippage = currentPrice * 0.001; // 0.1% slippage
-    const filledPrice = currentPrice + slippage;
-
-    // Update order as filled
-    await updateOrder(orderId, {
-      status: "filled",
-      filledQuantity: positionSize.quantity,
-      filledPrice: Math.round(filledPrice * 100),
-      filledAt: new Date(),
-    });
-
-    // Create position
-    const position: InsertPosition = {
-      id: positionId,
-      userId,
-      strategyId,
-      symbol: signal.symbol,
-      side: "long",
-      quantity: positionSize.quantity,
-      entryPrice: Math.round(filledPrice * 100),
-      currentPrice: Math.round(filledPrice * 100),
-      stopLoss: Math.round(positionSize.stopLoss * 100),
-      takeProfit: Math.round(positionSize.takeProfit * 100),
-      unrealizedPnL: 0,
-      status: "open",
-    };
-
-    await createPosition(position);
-
-    return {
-      orderId,
-      positionId,
-      status: "filled",
-      filledPrice,
-      message: `Buy order filled: ${positionSize.quantity} ${signal.symbol} at $${filledPrice.toFixed(2)}`,
-    };
-  } catch (error) {
-    console.error("[Trading] Buy order failed:", error);
-
-    // Update order as rejected
-    await updateOrder(orderId, {
-      status: "rejected",
-    });
-
-    return {
-      orderId,
-      status: "rejected",
-      message: `Buy order rejected: ${error instanceof Error ? error.message : "Unknown error"}`,
-    };
-  }
-}
-
-/**
- * Execute a sell order (close position)
- */
-export async function executeSellOrder(
-  position: Position,
-  currentPrice: number,
-  reason: string = "Manual close"
-): Promise<OrderResult> {
-  const orderId = randomUUID();
-
-  try {
-    // Create sell order
-    const order: InsertOrder = {
-      id: orderId,
-      userId: position.userId,
-      strategyId: position.strategyId,
-      positionId: position.id,
-      symbol: position.symbol,
-      side: "sell",
-      type: "market",
-      quantity: position.quantity,
-      filledQuantity: 0,
-      status: "pending",
-    };
-
-    await createOrder(order);
-
-    // Simulate order execution
-    const slippage = currentPrice * 0.001; // 0.1% slippage
-    const filledPrice = currentPrice - slippage;
-
-    // Update order as filled
-    await updateOrder(orderId, {
-      status: "filled",
-      filledQuantity: position.quantity,
-      filledPrice: Math.round(filledPrice * 100),
-      filledAt: new Date(),
-    });
-
-    // Calculate realized P&L
-    const entryPrice = position.entryPrice / 100;
-    const exitPrice = filledPrice;
-    const realizedPnL = position.side === "long"
-      ? (exitPrice - entryPrice) * position.quantity
-      : (entryPrice - exitPrice) * position.quantity;
-
-    // Close position
-    await closePosition(position.id, Math.round(filledPrice * 100), Math.round(realizedPnL * 100));
-
-    return {
-      orderId,
-      positionId: position.id,
-      status: "filled",
-      filledPrice,
-      message: `Sell order filled: ${position.quantity} ${position.symbol} at $${filledPrice.toFixed(2)}. P&L: $${realizedPnL.toFixed(2)}. Reason: ${reason}`,
-    };
-  } catch (error) {
-    console.error("[Trading] Sell order failed:", error);
-
-    await updateOrder(orderId, {
-      status: "rejected",
-    });
-
-    return {
-      orderId,
-      status: "rejected",
-      message: `Sell order rejected: ${error instanceof Error ? error.message : "Unknown error"}`,
-    };
-  }
-}
-
-/**
- * Update position with current market price and unrealized P&L
- */
-export async function updatePositionPrice(position: Position, currentPrice: number): Promise<void> {
-  const entryPrice = position.entryPrice / 100;
-  const unrealizedPnL = position.side === "long"
-    ? (currentPrice - entryPrice) * position.quantity
-    : (entryPrice - currentPrice) * position.quantity;
-
-  await updatePosition(position.id, {
-    currentPrice: Math.round(currentPrice * 100),
-    unrealizedPnL: Math.round(unrealizedPnL * 100),
-  });
-}
-
-/**
- * Update position stop loss
- */
-export async function updatePositionStopLoss(positionId: string, newStopLoss: number): Promise<void> {
-  await updatePosition(positionId, {
-    stopLoss: Math.round(newStopLoss * 100),
-  });
-}
-
-/**
- * Check and execute stop losses / take profits for all open positions
- */
-export async function monitorPositions(strategyId: string, currentPrices: Map<string, number>): Promise<OrderResult[]> {
-  const openPositions = await getOpenPositions(strategyId);
-  const results: OrderResult[] = [];
-
-  for (const position of openPositions) {
-    const currentPrice = currentPrices.get(position.symbol);
-    if (!currentPrice) continue;
-
-    // Update position price
-    await updatePositionPrice(position, currentPrice);
-
-    // Check stop loss
-    const stopLoss = position.stopLoss ? position.stopLoss / 100 : 0;
-    const takeProfit = position.takeProfit ? position.takeProfit / 100 : 0;
-
-    let shouldClose = false;
-    let closeReason = "";
-
-    if (position.side === "long") {
-      if (stopLoss > 0 && currentPrice <= stopLoss) {
-        shouldClose = true;
-        closeReason = "Stop loss triggered";
-      } else if (takeProfit > 0 && currentPrice >= takeProfit) {
-        shouldClose = true;
-        closeReason = "Take profit triggered";
+export class TradingExecutionService {
+  private broker = getBroker();
+  
+  /**
+   * Execute a trade signal
+   */
+  async executeTrade(signal: TradeSignal): Promise<OrderResponse | null> {
+    if (signal.action === 'hold') {
+      console.log(`[TradingExecution] HOLD signal for ${signal.symbol}, no action taken`);
+      return null;
+    }
+    
+    try {
+      console.log(`[TradingExecution] Executing ${signal.action.toUpperCase()} for ${signal.symbol}`);
+      
+      // Check if market is open
+      const isOpen = await this.broker.isMarketOpen();
+      if (!isOpen) {
+        console.warn(`[TradingExecution] Market is closed, cannot execute trade`);
+        return null;
       }
-    } else {
-      // Short position
-      if (stopLoss > 0 && currentPrice >= stopLoss) {
-        shouldClose = true;
-        closeReason = "Stop loss triggered";
-      } else if (takeProfit > 0 && currentPrice <= takeProfit) {
-        shouldClose = true;
-        closeReason = "Take profit triggered";
+      
+      // Get account info
+      const account = await this.broker.getAccount();
+      console.log(`[TradingExecution] Account cash: $${account.cash.toFixed(2)}, Portfolio: $${account.portfolioValue.toFixed(2)}`);
+      
+      // Calculate position size if not provided
+      let quantity = signal.quantity;
+      if (!quantity) {
+        // Use 2% of portfolio value for position sizing
+        const positionValue = account.portfolioValue * 0.02;
+        const currentPrice = signal.price || (await this.broker.getQuote(signal.symbol)).last;
+        quantity = Math.floor(positionValue / currentPrice);
+        
+        if (quantity < 1) {
+          console.warn(`[TradingExecution] Calculated quantity is 0, skipping trade`);
+          return null;
+        }
       }
-    }
-
-    if (shouldClose) {
-      const result = await executeSellOrder(position, currentPrice, closeReason);
-      results.push(result);
+      
+      // For sell orders, check if we have the position
+      if (signal.action === 'sell') {
+        const existingPosition = await this.broker.getPosition(signal.symbol);
+        if (!existingPosition) {
+          console.warn(`[TradingExecution] No position to sell for ${signal.symbol}`);
+          return null;
+        }
+        quantity = Math.min(quantity, existingPosition.quantity);
+      }
+      
+      // Create order request
+      const orderRequest: OrderRequest = {
+        symbol: signal.symbol,
+        side: signal.action,
+        type: 'market', // Use market orders for simplicity
+        quantity,
+        timeInForce: 'day',
+      };
+      
+      // Place order through broker
+      console.log(`[TradingExecution] Placing order:`, orderRequest);
+      const orderResponse = await this.broker.placeOrder(orderRequest);
+      console.log(`[TradingExecution] Order placed:`, orderResponse);
+      
+      // Save order to database
+      await this.saveOrder(signal.strategyId, orderResponse, signal);
+      
+      // If order is filled, update position
+      if (orderResponse.status === 'filled') {
+        await this.updatePosition(signal.strategyId, orderResponse, signal);
+      }
+      
+      return orderResponse;
+    } catch (error: any) {
+      console.error(`[TradingExecution] Error executing trade:`, error);
+      throw error;
     }
   }
-
-  return results;
-}
-
-/**
- * Calculate portfolio value
- */
-export async function calculatePortfolioValue(
-  strategyId: string,
-  cashBalance: number,
-  currentPrices: Map<string, number>
-): Promise<number> {
-  const openPositions = await getOpenPositions(strategyId);
-
-  let totalValue = cashBalance;
-
-  for (const position of openPositions) {
-    const currentPrice = currentPrices.get(position.symbol);
-    if (currentPrice) {
-      totalValue += position.quantity * currentPrice;
-    } else {
-      // Use last known price if current price not available
-      totalValue += position.quantity * (position.currentPrice / 100);
+  
+  /**
+   * Save order to database
+   */
+  private async saveOrder(strategyId: string, orderResponse: OrderResponse, signal: TradeSignal): Promise<void> {
+    const db = await getDb();
+    if (!db) return;
+    
+    try {
+      const orderData: InsertOrder = {
+        id: orderResponse.orderId,
+        strategyId,
+        symbol: orderResponse.symbol,
+        side: orderResponse.side,
+        type: orderResponse.type,
+        quantity: orderResponse.quantity,
+        filledQuantity: orderResponse.filledQuantity,
+        price: orderResponse.averagePrice,
+        status: orderResponse.status,
+        submittedAt: orderResponse.submittedAt,
+        filledAt: orderResponse.filledAt,
+      };
+      
+      await db.insert(orders).values(orderData);
+      console.log(`[TradingExecution] Order saved to database: ${orderResponse.orderId}`);
+    } catch (error) {
+      console.error(`[TradingExecution] Error saving order:`, error);
     }
   }
-
-  return totalValue;
-}
-
-/**
- * Get portfolio summary
- */
-export async function getPortfolioSummary(strategyId: string, accountValue: number) {
-  const openPositions = await getOpenPositions(strategyId);
-
-  const totalPositionValue = openPositions.reduce((sum, pos) => {
-    return sum + pos.quantity * (pos.currentPrice / 100);
-  }, 0);
-
-  const totalUnrealizedPnL = openPositions.reduce((sum, pos) => {
-    return sum + (pos.unrealizedPnL / 100);
-  }, 0);
-
-  const cashBalance = accountValue - totalPositionValue;
-  const exposurePercent = (totalPositionValue / accountValue) * 100;
-
-  return {
-    accountValue,
-    cashBalance,
-    totalPositionValue,
-    totalUnrealizedPnL,
-    exposurePercent,
-    positionCount: openPositions.length,
-    positions: openPositions.map((pos) => ({
-      id: pos.id,
-      symbol: pos.symbol,
-      side: pos.side,
-      quantity: pos.quantity,
-      entryPrice: pos.entryPrice / 100,
-      currentPrice: pos.currentPrice / 100,
-      unrealizedPnL: pos.unrealizedPnL / 100,
-      unrealizedPnLPercent: ((pos.unrealizedPnL / 100) / (pos.quantity * (pos.entryPrice / 100))) * 100,
-      stopLoss: pos.stopLoss ? pos.stopLoss / 100 : null,
-      takeProfit: pos.takeProfit ? pos.takeProfit / 100 : null,
-      openedAt: pos.openedAt,
-    })),
-  };
+  
+  /**
+   * Update position in database
+   */
+  private async updatePosition(strategyId: string, orderResponse: OrderResponse, signal: TradeSignal): Promise<void> {
+    const db = await getDb();
+    if (!db) return;
+    
+    try {
+      // Get current broker position
+      const brokerPosition = await this.broker.getPosition(orderResponse.symbol);
+      
+      if (!brokerPosition) {
+        // Position was closed
+        await db.delete(positions).where(
+          and(
+            eq(positions.strategyId, strategyId),
+            eq(positions.symbol, orderResponse.symbol)
+          )
+        );
+        console.log(`[TradingExecution] Position closed for ${orderResponse.symbol}`);
+        return;
+      }
+      
+      // Check if position exists in database
+      const existing = await db.select().from(positions).where(
+        and(
+          eq(positions.strategyId, strategyId),
+          eq(positions.symbol, orderResponse.symbol)
+        )
+      ).limit(1);
+      
+      const positionData: InsertPosition = {
+        strategyId,
+        symbol: brokerPosition.symbol,
+        quantity: brokerPosition.quantity,
+        averagePrice: brokerPosition.averageEntryPrice,
+        currentPrice: brokerPosition.currentPrice,
+        unrealizedPL: brokerPosition.unrealizedPL,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit,
+        openedAt: existing.length > 0 ? existing[0].openedAt : new Date(),
+      };
+      
+      if (existing.length > 0) {
+        // Update existing position
+        await db.update(positions)
+          .set(positionData)
+          .where(
+            and(
+              eq(positions.strategyId, strategyId),
+              eq(positions.symbol, orderResponse.symbol)
+            )
+          );
+        console.log(`[TradingExecution] Position updated for ${orderResponse.symbol}`);
+      } else {
+        // Insert new position
+        await db.insert(positions).values(positionData);
+        console.log(`[TradingExecution] New position created for ${orderResponse.symbol}`);
+      }
+    } catch (error) {
+      console.error(`[TradingExecution] Error updating position:`, error);
+    }
+  }
+  
+  /**
+   * Monitor positions and execute stop-loss/take-profit
+   */
+  async monitorPositions(strategyId: string): Promise<void> {
+    try {
+      const db = await getDb();
+      if (!db) return;
+      
+      // Get all open positions for this strategy
+      const openPositions = await db.select().from(positions).where(
+        eq(positions.strategyId, strategyId)
+      );
+      
+      for (const position of openPositions) {
+        // Get current price from broker
+        const brokerPosition = await this.broker.getPosition(position.symbol);
+        if (!brokerPosition) {
+          // Position no longer exists in broker, remove from database
+          await db.delete(positions).where(
+            and(
+              eq(positions.strategyId, strategyId),
+              eq(positions.symbol, position.symbol)
+            )
+          );
+          continue;
+        }
+        
+        const currentPrice = brokerPosition.currentPrice;
+        
+        // Check stop-loss
+        if (position.stopLoss && currentPrice <= position.stopLoss) {
+          console.log(`[TradingExecution] Stop-loss triggered for ${position.symbol} at $${currentPrice} (stop: $${position.stopLoss})`);
+          await this.closePosition(strategyId, position.symbol, 'stop-loss');
+          continue;
+        }
+        
+        // Check take-profit
+        if (position.takeProfit && currentPrice >= position.takeProfit) {
+          console.log(`[TradingExecution] Take-profit triggered for ${position.symbol} at $${currentPrice} (target: $${position.takeProfit})`);
+          await this.closePosition(strategyId, position.symbol, 'take-profit');
+          continue;
+        }
+        
+        // Update current price and P&L
+        await db.update(positions)
+          .set({
+            currentPrice: brokerPosition.currentPrice,
+            unrealizedPL: brokerPosition.unrealizedPL,
+          })
+          .where(
+            and(
+              eq(positions.strategyId, strategyId),
+              eq(positions.symbol, position.symbol)
+            )
+          );
+      }
+    } catch (error) {
+      console.error(`[TradingExecution] Error monitoring positions:`, error);
+    }
+  }
+  
+  /**
+   * Close a position
+   */
+  async closePosition(strategyId: string, symbol: string, reason: string): Promise<void> {
+    try {
+      console.log(`[TradingExecution] Closing position ${symbol} (reason: ${reason})`);
+      
+      const orderResponse = await this.broker.closePosition(symbol);
+      
+      // Save closing order
+      await this.saveOrder(strategyId, orderResponse, {
+        strategyId,
+        symbol,
+        action: 'sell',
+        reasoning: `Position closed: ${reason}`,
+        confidence: 1.0,
+      });
+      
+      // Remove position from database
+      const db = await getDb();
+      if (db) {
+        await db.delete(positions).where(
+          and(
+            eq(positions.strategyId, strategyId),
+            eq(positions.symbol, symbol)
+          )
+        );
+      }
+      
+      console.log(`[TradingExecution] Position ${symbol} closed successfully`);
+    } catch (error) {
+      console.error(`[TradingExecution] Error closing position:`, error);
+    }
+  }
+  
+  /**
+   * Get current positions from broker
+   */
+  async getBrokerPositions(): Promise<Position[]> {
+    return this.broker.getPositions();
+  }
+  
+  /**
+   * Get account information
+   */
+  async getAccount() {
+    return this.broker.getAccount();
+  }
 }
 
