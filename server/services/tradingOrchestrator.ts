@@ -18,7 +18,7 @@ import {
   calculateSharpeRatio,
   calculateMaxDrawdown,
 } from "./riskManagement";
-import { executeBuyOrder, executeSellOrder, monitorPositions, getPortfolioSummary, updatePositionStopLoss } from "./tradingExecution";
+import { executeBuyOrder, executeSellOrder, monitorPositions, getPortfolioSummary, updatePositionStopLoss } from "./tradingExecutionService";
 
 /**
  * Trading Orchestrator
@@ -119,7 +119,7 @@ export class TradingOrchestrator {
     await monitorPositions(strategyId, priceMap);
 
     // 3. Get historical data with technical indicators
-    const { data: historicalData, indicators } = await MarketDataService.getDataWithIndicators(symbol, '1mo', '1d');
+    const { data: historicalData, indicators } = await MarketDataService.getDataWithIndicators(symbol, '3mo', '1d');
 
     // 4. Run agent analysis
     const context = {
