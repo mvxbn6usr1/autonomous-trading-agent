@@ -3,8 +3,6 @@
 
 import { getDb } from './server/db';
 import { users, strategies } from './drizzle/schema';
-
-const db = getDb();
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { pdtTracker } from './server/services/compliance/pdtTracker';
@@ -35,6 +33,11 @@ function logTest(testName: string, status: 'PASS' | 'FAIL' | 'WARN', message: st
 
 async function testDatabaseConnection() {
   try {
+    const db = await getDb();
+    if (!db) {
+      logTest('Database Connection', 'WARN', 'Database not configured (DATABASE_URL not set)');
+      return;
+    }
     const testUsers = await db.select().from(users).limit(1);
     logTest('Database Connection', 'PASS', `Connected successfully (${testUsers.length} users found)`);
   } catch (error) {
@@ -135,6 +138,12 @@ async function testAgentOrchestrator() {
 
 async function testPDTTracking() {
   try {
+    const db = await getDb();
+    if (!db) {
+      logTest('PDT Tracking', 'WARN', 'Database not configured - skipping');
+      return;
+    }
+    
     // Create a test user and strategy if they don't exist
     let testUser = await db.select().from(users).where(eq(users.email, 'test@example.com')).limit(1);
     
@@ -194,6 +203,12 @@ async function testPDTTracking() {
 
 async function testSurveillance() {
   try {
+    const db = await getDb();
+    if (!db) {
+      logTest('Surveillance', 'WARN', 'Database not configured - skipping');
+      return;
+    }
+    
     // Use existing test user/strategy from PDT test
     const testUser = await db.select().from(users).where(eq(users.email, 'test@example.com')).limit(1);
     
@@ -227,11 +242,12 @@ async function testSurveillance() {
 
 async function testBacktesting() {
   try {
+    // Use longer period to ensure sufficient data for technical indicators (need 50+ points)
     const config = {
       strategyId: 'test-backtest',
       symbols: ['AAPL'],
-      startDate: new Date('2024-10-01'),
-      endDate: new Date('2024-10-15'),
+      startDate: new Date('2024-07-01'), // 3+ months of data
+      endDate: new Date('2024-10-19'),
       initialCapital: 100000,
       commission: 1.0,
     };
@@ -251,6 +267,12 @@ async function testBacktesting() {
 
 async function testTradingOrchestrator() {
   try {
+    const db = await getDb();
+    if (!db) {
+      logTest('Trading Orchestrator', 'WARN', 'Database not configured - skipping');
+      return;
+    }
+    
     const testUser = await db.select().from(users).where(eq(users.email, 'test@example.com')).limit(1);
     
     if (testUser.length === 0) {

@@ -3,8 +3,6 @@
 
 import { getDb } from '../../db';
 import { orders, auditLogs, InsertAuditLog } from '../../../drizzle/schema';
-
-const db = getDb();
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
@@ -40,6 +38,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     timeWindowMs: number = 3600000 // 1 hour
   ): Promise<Alert[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const alerts: Alert[] = [];
     const cutoffTime = new Date(Date.now() - timeWindowMs);
 
@@ -100,6 +101,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     timeWindowMs: number = 300000 // 5 minutes
   ): Promise<Alert[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const alerts: Alert[] = [];
     const cutoffTime = new Date(Date.now() - timeWindowMs);
 
@@ -143,6 +147,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     timeWindowMs: number = 60000 // 1 minute
   ): Promise<Alert[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const alerts: Alert[] = [];
     const cutoffTime = new Date(Date.now() - timeWindowMs);
 
@@ -177,6 +184,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     timeWindowMs: number = 600000 // 10 minutes
   ): Promise<Alert[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const alerts: Alert[] = [];
     const cutoffTime = new Date(Date.now() - timeWindowMs);
 
@@ -273,6 +283,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     alerts: Alert[]
   ): Promise<void> {
+    const db = await getDb();
+    if (!db) return;
+    
     for (const alert of alerts) {
       const auditLog: InsertAuditLog = {
         id: nanoid(),
@@ -305,6 +318,9 @@ export class MarketAbuseSurveillance {
     strategyId: string,
     days: number = 30
   ): Promise<Alert[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
 

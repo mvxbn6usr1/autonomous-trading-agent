@@ -20,7 +20,7 @@ import {
 } from './metrics';
 import { simulateOrderFill, DEFAULT_SLIPPAGE_CONFIG, SlippageConfig } from './slippage';
 import { AgentOrchestrator } from '../agents';
-import { enhancedDataProvider } from '../marketData/enhancedDataProvider';
+import { MarketDataService } from '../marketData';
 
 export class BacktestEngine {
   private config: BacktestConfig;
@@ -110,56 +110,72 @@ export class BacktestEngine {
     console.log('[Backtest] Loading historical data...');
     
     const bars: MarketDataBar[] = [];
+    
+    // Fetch historical data for all symbols (fetches entire period at once)
+    const symbolData = new Map<string, any>();
+    
+    for (const symbol of this.config.symbols) {
+      try {
+        // Fetch 3 months of historical data for technical indicators
+        const { data, indicators } = await MarketDataService.getDataWithIndicators(symbol, '3mo', '1d');
+        symbolData.set(symbol, { data, indicators });
+        console.log(`[Backtest] Loaded ${data.length} data points for ${symbol}`);
+      } catch (error) {
+        console.error(`[Backtest] Error loading data for ${symbol}:`, error.message);
+      }
+    }
+
+    // Find the common date range across all symbols
     const startDate = new Date(this.config.startDate);
     const endDate = new Date(this.config.endDate);
     
-    // Generate date range (trading days only)
-    const dates: Date[] = [];
-    let currentDate = new Date(startDate);
+    // Create bars from the loaded data
+    const dateMap = new Map<string, MarketDataBar>();
     
-    while (currentDate <= endDate) {
-      // Skip weekends
-      const dayOfWeek = currentDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        dates.push(new Date(currentDate));
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    console.log(`[Backtest] Processing ${dates.length} trading days...`);
-
-    // Load data for each date
-    for (const date of dates) {
-      const bar: MarketDataBar = {
-        date,
-        prices: {},
-        indicators: {},
-        volume: {},
-      };
-
-      // Load data for each symbol
-      for (const symbol of this.config.symbols) {
-        try {
-          const data = await enhancedDataProvider.getComprehensiveData(symbol);
+    for (const [symbol, {data, indicators}] of symbolData) {
+      for (const point of data) {
+        const date = new Date(point.timestamp);
+        
+        // Only include dates within our backtest range (use full day comparison)
+        const pointDateStr = date.toISOString().split('T')[0];
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+        
+        if (pointDateStr >= startDateStr && pointDateStr <= endDateStr) {
+          const dateKey = pointDateStr;
           
-          if (data.currentPrice && data.technicalIndicators) {
-            bar.prices[symbol] = data.currentPrice;
-            bar.indicators[symbol] = data.technicalIndicators;
-            bar.volume[symbol] = data.technicalIndicators.volume || 1000000;
+          if (!dateMap.has(dateKey)) {
+            dateMap.set(dateKey, {
+              date,
+              prices: {},
+              indicators: {},
+              volume: {},
+            });
           }
-        } catch (error) {
-          console.error(`[Backtest] Error loading data for ${symbol}:`, error);
+          
+          const bar = dateMap.get(dateKey)!;
+          bar.prices[symbol] = point.close; // close price
+          bar.volume[symbol] = point.volume || 1000000; // volume
+          bar.indicators[symbol] = {
+            ...indicators,
+            price: point.close,
+            open: point.open,
+            high: point.high,
+            low: point.low,
+            close: point.close,
+            volume: point.volume,
+          };
         }
       }
-
-      // Only add bar if we have data
-      if (Object.keys(bar.prices).length > 0) {
-        bars.push(bar);
-      }
     }
 
-    console.log(`[Backtest] Loaded ${bars.length} bars of historical data`);
-    return bars;
+    // Convert map to sorted array
+    const sortedBars = Array.from(dateMap.values()).sort((a, b) => 
+      a.date.getTime() - b.date.getTime()
+    );
+
+    console.log(`[Backtest] Loaded ${sortedBars.length} bars of historical data`);
+    return sortedBars;
   }
 
   private updatePortfolioValue(bar: MarketDataBar): void {

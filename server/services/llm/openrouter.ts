@@ -120,12 +120,19 @@ export async function callLLMStructured<T>(
   const response = await callLLM(enhancedMessages, model, temperature);
 
   try {
-    // Strip markdown code blocks if present
+    // Extract JSON from response, handling various formats
     let content = response.content.trim();
-    if (content.startsWith('```json')) {
-      content = content.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
-    } else if (content.startsWith('```')) {
-      content = content.replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+    
+    // Try to extract JSON from markdown code blocks
+    const markdownMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (markdownMatch) {
+      content = markdownMatch[1].trim();
+    } else {
+      // Try to find JSON object boundaries
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        content = jsonMatch[0].trim();
+      }
     }
     
     const data = JSON.parse(content);
