@@ -290,6 +290,76 @@ export type MarketScan = typeof marketScans.$inferSelect;
 export type InsertMarketScan = typeof marketScans.$inferInsert;
 
 /**
+ * Backtests - historical strategy testing results
+ */
+export const backtests = mysqlTable("backtests", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: varchar("userId", { length: 64 }).notNull(),
+  strategyId: varchar("strategyId", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  symbols: text("symbols").notNull(), // JSON array
+  startDate: timestamp("startDate").notNull(),
+  endDate: timestamp("endDate").notNull(),
+  initialCapital: decimal("initialCapital", { precision: 15, scale: 2 }).notNull(),
+  finalEquity: decimal("finalEquity", { precision: 15, scale: 2 }),
+  totalReturn: decimal("totalReturn", { precision: 10, scale: 6 }),
+  sharpeRatio: decimal("sharpeRatio", { precision: 10, scale: 4 }),
+  maxDrawdown: decimal("maxDrawdown", { precision: 10, scale: 6 }),
+  winRate: decimal("winRate", { precision: 10, scale: 6 }),
+  totalTrades: int("totalTrades"),
+  profitFactor: decimal("profitFactor", { precision: 10, scale: 4 }),
+  status: mysqlEnum("status", ["running", "completed", "failed"]).default("running").notNull(),
+  errorMessage: text("errorMessage"),
+  createdAt: timestamp("createdAt").defaultNow(),
+  completedAt: timestamp("completedAt"),
+}, (table) => ({
+  userIdIdx: index("backtest_userId_idx").on(table.userId),
+  strategyIdIdx: index("backtest_strategyId_idx").on(table.strategyId),
+}));
+
+export type Backtest = typeof backtests.$inferSelect;
+export type InsertBacktest = typeof backtests.$inferInsert;
+
+/**
+ * Backtest trades - individual trades from backtests
+ */
+export const backtestTrades = mysqlTable("backtestTrades", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  backtestId: varchar("backtestId", { length: 64 }).notNull(),
+  date: timestamp("date").notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  action: mysqlEnum("action", ["buy", "sell"]).notNull(),
+  quantity: int("quantity").notNull(),
+  price: decimal("price", { precision: 15, scale: 4 }).notNull(),
+  commission: decimal("commission", { precision: 10, scale: 4 }).notNull(),
+  pnl: decimal("pnl", { precision: 15, scale: 4 }).notNull(),
+  entryPrice: decimal("entryPrice", { precision: 15, scale: 4 }),
+  exitPrice: decimal("exitPrice", { precision: 15, scale: 4 }),
+  createdAt: timestamp("createdAt").defaultNow(),
+}, (table) => ({
+  backtestIdIdx: index("backtestTrade_backtestId_idx").on(table.backtestId),
+}));
+
+export type BacktestTrade = typeof backtestTrades.$inferSelect;
+export type InsertBacktestTrade = typeof backtestTrades.$inferInsert;
+
+/**
+ * Backtest equity curve - portfolio value over time
+ */
+export const backtestEquityCurve = mysqlTable("backtestEquityCurve", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  backtestId: varchar("backtestId", { length: 64 }).notNull(),
+  date: timestamp("date").notNull(),
+  value: decimal("value", { precision: 15, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow(),
+}, (table) => ({
+  backtestIdIdx: index("backtestEquity_backtestId_idx").on(table.backtestId),
+}));
+
+export type BacktestEquityCurve = typeof backtestEquityCurve.$inferSelect;
+export type InsertBacktestEquityCurve = typeof backtestEquityCurve.$inferInsert;
+
+/**
  * Portfolio snapshots - Historical portfolio state for performance tracking
  */
 export const portfolioSnapshots = mysqlTable("portfolioSnapshots", {
