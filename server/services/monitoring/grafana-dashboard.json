@@ -1,0 +1,356 @@
+{
+  "dashboard": {
+    "title": "Autonomous Trading Agent - Production Dashboard",
+    "uid": "autonomous-trading",
+    "version": 1,
+    "timezone": "browser",
+    "editable": true,
+    "graphTooltip": 1,
+    "panels": [
+      {
+        "id": 1,
+        "title": "Portfolio Value",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "trading_portfolio_value_usd",
+            "legendFormat": "Strategy {{strategy_id}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "currencyUSD",
+            "label": "Portfolio Value"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Open Positions",
+        "type": "stat",
+        "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "trading_positions_open",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Daily P&L",
+        "type": "stat",
+        "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "trading_unrealized_pnl_usd + trading_realized_pnl_usd",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": -1000, "color": "red" },
+                { "value": 0, "color": "yellow" },
+                { "value": 1000, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Unrealized P&L",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "trading_unrealized_pnl_usd",
+            "legendFormat": "Strategy {{strategy_id}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "currencyUSD",
+            "label": "Unrealized P&L"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Order Fill Rate",
+        "type": "gauge",
+        "gridPos": { "x": 12, "y": 4, "w": 12, "h": 4 },
+        "targets": [
+          {
+            "expr": "sum(rate(trading_orders_filled_total[5m])) / sum(rate(trading_orders_placed_total[5m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.7, "color": "yellow" },
+                { "value": 0.9, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Agent Decision Time",
+        "type": "heatmap",
+        "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(trading_agent_decision_seconds_bucket[5m])",
+            "legendFormat": "{{agent_type}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Risk Violations",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(trading_risk_violations_total[5m])",
+            "legendFormat": "{{violation_type}}",
+            "refId": "A"
+          }
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.1],
+                "type": "gt"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              },
+              "type": "query"
+            }
+          ],
+          "frequency": "60s",
+          "handler": 1,
+          "name": "Risk Violation Alert",
+          "message": "High rate of risk violations detected"
+        }
+      },
+      {
+        "id": 8,
+        "title": "Orders by Side",
+        "type": "piechart",
+        "gridPos": { "x": 12, "y": 16, "w": 6, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (side) (trading_orders_filled_total)",
+            "legendFormat": "{{side}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Win Rate",
+        "type": "stat",
+        "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "trading_strategy_win_rate",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 0.6, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Sharpe Ratio",
+        "type": "stat",
+        "gridPos": { "x": 18, "y": 20, "w": 6, "h": 4 },
+        "targets": [
+          {
+            "expr": "trading_strategy_sharpe_ratio",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 1, "color": "yellow" },
+                { "value": 2, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "API Response Time",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(trading_api_call_seconds_bucket[5m]))",
+            "legendFormat": "{{endpoint}} - 95th percentile",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(trading_api_call_seconds_bucket[5m]))",
+            "legendFormat": "{{endpoint}} - 50th percentile",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Response Time"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Cache Hit Rate",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum(rate(trading_cache_hits_total[5m])) / (sum(rate(trading_cache_hits_total[5m])) + sum(rate(trading_cache_misses_total[5m])))",
+            "legendFormat": "{{cache_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percentunit",
+            "label": "Hit Rate",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Agent Consensus Score",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "trading_agent_consensus_score",
+            "legendFormat": "{{symbol}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "Consensus (0-1)",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "LLM API Costs",
+        "type": "graph",
+        "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "rate(trading_llm_api_cost_usd[1h])",
+            "legendFormat": "{{provider}}/{{model}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "currencyUSD",
+            "label": "Cost per Hour"
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Trading Loop Performance",
+        "type": "graph",
+        "gridPos": { "x": 0, "y": 40, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(trading_loop_duration_seconds_bucket[5m]))",
+            "legendFormat": "Strategy {{strategy_id}} - 95th percentile",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Duration"
+          }
+        ]
+      }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 39,
+    "tags": ["trading", "autonomous", "production"],
+    "templating": {
+      "list": [
+        {
+          "name": "strategy_id",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(trading_portfolio_value_usd, strategy_id)",
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    }
+  }
+}
