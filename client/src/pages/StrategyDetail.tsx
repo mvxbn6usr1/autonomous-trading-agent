@@ -374,7 +374,7 @@ export default function StrategyDetail() {
             {decisions && decisions.length > 0 ? (
               <div className="grid gap-4">
                 {decisions.map((decision) => {
-                  const metrics = decision.metrics ? JSON.parse(decision.metrics) : null;
+                  const metrics = decision.metrics ? (typeof decision.metrics === 'string' ? JSON.parse(decision.metrics) : decision.metrics) : null;
                   return (
                     <Card key={decision.id}>
                       <CardHeader>
