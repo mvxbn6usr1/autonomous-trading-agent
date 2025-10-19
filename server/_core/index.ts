@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { getMetrics } from "../services/monitoring/prometheus";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,6 +36,21 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Prometheus metrics endpoint
+  app.get("/metrics", async (req, res) => {
+    try {
+      res.set("Content-Type", "text/plain");
+      res.send(await getMetrics());
+    } catch (error) {
+      res.status(500).send("Error generating metrics");
+    }
+  });
+  
+  // Health check endpoint
+  app.get("/health", (req, res) => {
+    res.json({ status: "healthy", timestamp: new Date().toISOString() });
+  });
+  
   // tRPC API
   app.use(
     "/api/trpc",

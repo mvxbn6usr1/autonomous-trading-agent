@@ -5,7 +5,9 @@ import { publicProcedure, router } from "../trpc";
 import { BacktestEngine } from "../../../services/backtesting/backtestEngine";
 import { BacktestConfig } from "../../../services/backtesting/types";
 import { backtests, backtestTrades, backtestEquityCurve, InsertBacktest, InsertBacktestTrade, InsertBacktestEquityCurve } from "../../../../drizzle/schema";
-import { db } from "../../../db";
+import { getDb } from "../../../db";
+
+const db = getDb();
 import { eq, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 

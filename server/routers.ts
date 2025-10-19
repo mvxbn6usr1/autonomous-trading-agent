@@ -26,6 +26,10 @@ import { tradingOrchestrator } from './services/tradingOrchestrator';
 import { tradingLoopManager } from './services/tradingLoop';
 import { MarketDataService } from "./services/marketData";
 import { generateComplianceReport, checkRegulatoryCompliance, exportAuditTrail } from "./services/compliance";
+import { backtestingRouter } from "./_core/trpc/routers/backtesting";
+import { pdtTracker } from "./services/compliance/pdtTracker";
+import { surveillanceService } from "./services/compliance/surveillance";
+import { cache } from "./services/cache";
 
 export const appRouter = router({
   system: systemRouter,
@@ -396,6 +400,85 @@ export const appRouter = router({
     allStatus: protectedProcedure.query(() => {
       return tradingLoopManager.getLoopStatus();
     }),
+  }),
+
+  // Backtesting
+  backtesting: backtestingRouter,
+
+  // PDT Compliance
+  pdt: router({
+    status: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return pdtTracker.checkPDTStatus(ctx.user.id, input.strategyId);
+      }),
+
+    validateDayTrade: protectedProcedure
+      .input(z.object({
+        strategyId: z.string(),
+        symbol: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        return pdtTracker.validateDayTrade(ctx.user.id, input.strategyId, input.symbol);
+      }),
+
+    history: protectedProcedure
+      .input(z.object({
+        strategyId: z.string(),
+        days: z.number().optional().default(30),
+      }))
+      .query(async ({ input }) => {
+        return pdtTracker.getPDTHistory(input.strategyId, input.days);
+      }),
+  }),
+
+  // Market Abuse Surveillance
+  surveillance: router({
+    run: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return surveillanceService.runSurveillance(ctx.user.id, input.strategyId);
+      }),
+
+    washTrading: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .query(async ({ input }) => {
+        return surveillanceService.detectWashTrading(input.strategyId);
+      }),
+
+    layering: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .query(async ({ input }) => {
+        return surveillanceService.detectLayering(input.strategyId);
+      }),
+
+    history: protectedProcedure
+      .input(z.object({
+        strategyId: z.string(),
+        days: z.number().optional().default(30),
+      }))
+      .query(async ({ input }) => {
+        return surveillanceService.getSurveillanceHistory(input.strategyId, input.days);
+      }),
+  }),
+
+  // Cache Management
+  cache: router({
+    stats: publicProcedure.query(async () => {
+      return cache.getStats();
+    }),
+
+    health: publicProcedure.query(async () => {
+      const healthy = await cache.healthCheck();
+      return { healthy };
+    }),
+
+    invalidate: protectedProcedure
+      .input(z.object({ symbol: z.string() }))
+      .mutation(async ({ input }) => {
+        await cache.invalidateSymbol(input.symbol);
+        return { success: true };
+      }),
   }),
 
   // Manual analysis trigger (for testing)

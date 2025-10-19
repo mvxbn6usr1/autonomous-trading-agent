@@ -20,7 +20,7 @@ import {
 } from './metrics';
 import { simulateOrderFill, DEFAULT_SLIPPAGE_CONFIG, SlippageConfig } from './slippage';
 import { AgentOrchestrator } from '../agents';
-import { getEnhancedMarketData } from '../marketData/enhancedDataProvider';
+import { enhancedDataProvider } from '../marketData/enhancedDataProvider';
 
 export class BacktestEngine {
   private config: BacktestConfig;
@@ -140,7 +140,7 @@ export class BacktestEngine {
       // Load data for each symbol
       for (const symbol of this.config.symbols) {
         try {
-          const data = await getEnhancedMarketData(symbol);
+          const data = await enhancedDataProvider.getComprehensiveData(symbol);
           
           if (data.currentPrice && data.technicalIndicators) {
             bar.prices[symbol] = data.currentPrice;

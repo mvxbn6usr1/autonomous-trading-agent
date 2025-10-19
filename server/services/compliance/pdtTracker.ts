@@ -1,7 +1,7 @@
 // Pattern Day Trader (PDT) tracking and compliance service
 // SEC Rule requires $25,000 minimum for accounts with 4+ day trades in 5 business days
 
-import { db } from '../../db';
+import { getDb } from '../../db';
 import { orders, auditLogs, InsertAuditLog } from '../../../drizzle/schema';
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { getBroker } from '../brokers';
@@ -120,6 +120,9 @@ export class PatternDayTraderService {
    * Get all day trades in the last N business days
    */
   private async getDayTrades(strategyId: string, businessDays: number): Promise<DayTrade[]> {
+    const db = await getDb();
+    if (!db) return [];
+    
     const cutoffDate = this.getBusinessDaysAgo(businessDays);
 
     // Get all orders since cutoff date
@@ -162,6 +165,9 @@ export class PatternDayTraderService {
    * Check if a position was opened today
    */
   private async wasPositionOpenedToday(strategyId: string, symbol: string): Promise<boolean> {
+    const db = await getDb();
+    if (!db) return false;
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -182,6 +188,9 @@ export class PatternDayTraderService {
    * Create a PDT violation alert
    */
   private async createPDTAlert(userId: string, strategyId: string, symbol: string): Promise<void> {
+    const db = await getDb();
+    if (!db) return;
+    
     const auditLog: InsertAuditLog = {
       id: nanoid(),
       userId,
@@ -298,17 +307,19 @@ export class PatternDayTraderService {
     violations: any[];
     statusHistory: any[];
   }> {
+    const db = await getDb();
+    
     const dayTrades = await this.getDayTrades(strategyId, days);
 
     // Get PDT violations from audit log
     const cutoffDate = this.getBusinessDaysAgo(days);
-    const violations = await db.query.auditLogs.findMany({
+    const violations = db ? await db.query.auditLogs.findMany({
       where: and(
         eq(auditLogs.strategyId, strategyId),
         eq(auditLogs.eventType, 'pdt_violation'),
         gte(auditLogs.createdAt, cutoffDate)
       ),
-    });
+    }) : [];
 
     return {
       dayTrades,

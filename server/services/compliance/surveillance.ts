@@ -1,8 +1,10 @@
 // Market abuse surveillance and detection system
 // Detects wash trading, layering, spoofing, and other manipulative practices
 
-import { db } from '../../db';
+import { getDb } from '../../db';
 import { orders, auditLogs, InsertAuditLog } from '../../../drizzle/schema';
+
+const db = getDb();
 import { eq, and, gte, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
