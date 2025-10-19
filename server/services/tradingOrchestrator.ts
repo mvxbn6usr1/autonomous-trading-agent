@@ -18,7 +18,7 @@ import {
   calculateSharpeRatio,
   calculateMaxDrawdown,
 } from "./riskManagement";
-import { TradingExecutionService, TradeSignal as ExecutionSignal } from "./tradingExecution";
+import { executeBuyOrder, executeSellOrder, monitorPositions, getPortfolioSummary, updatePositionStopLoss } from "./tradingExecution";
 
 /**
  * Trading Orchestrator

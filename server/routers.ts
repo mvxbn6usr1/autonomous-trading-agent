@@ -108,29 +108,15 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
-        // Update strategy to active
         await updateStrategy(input.id, { isActive: true });
-        
-        // Start the autonomous trading loop
-        await tradingLoopManager.startLoop(input.id);
-        
-        // Run initial cycle immediately
         await tradingOrchestrator.startStrategy(input.id, input.symbol, input.accountValue);
-        
-        return { success: true, message: "Strategy started - autonomous trading loop active" };
+        return { success: true, message: "Strategy started" };
       }),
 
     stop: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-      // Update strategy to inactive
       await updateStrategy(input.id, { isActive: false });
-      
-      // Stop the autonomous trading loop
-      tradingLoopManager.stopLoop(input.id);
-      
-      // Stop the orchestrator
       tradingOrchestrator.stopStrategy(input.id);
-      
-      return { success: true, message: "Strategy stopped - trading loop deactivated" };
+      return { success: true, message: "Strategy stopped" };
     }),
   }),
 
