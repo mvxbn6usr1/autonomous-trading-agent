@@ -4,7 +4,7 @@
  */
 
 import { getActiveStrategies, updateStrategy } from '../db';
-import { tradingOrchestrator } from './tradingOrchestrator';
+import { TradingOrchestrator } from './tradingOrchestrator';
 
 interface ActiveLoop {
   strategyId: string;
@@ -92,7 +92,8 @@ class TradingLoopManager {
       const accountValue = 100000; // TODO: Get from portfolio
 
       // Execute trading cycle through orchestrator
-      await tradingOrchestrator.startStrategy(strategyId, symbol, accountValue);
+      const orchestrator = new TradingOrchestrator();
+      await orchestrator.startStrategy(strategyId, symbol, accountValue);
 
       console.log(`[TradingLoop] Cycle completed for strategy ${strategyId}`);
     } catch (error: any) {
