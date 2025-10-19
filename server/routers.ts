@@ -22,7 +22,7 @@ import {
   getStrategyPerformance,
 } from "./db";
 import { tradingOrchestrator } from "./services/tradingOrchestrator";
-import { getCurrentPrice, calculateTechnicalIndicators } from "./services/marketData";
+import { MarketDataService } from "./services/marketData";
 import { generateComplianceReport, checkRegulatoryCompliance, exportAuditTrail } from "./services/compliance";
 
 export const appRouter = router({
@@ -207,11 +207,12 @@ export const appRouter = router({
   // Market Data
   market: router({
     currentPrice: protectedProcedure.input(z.object({ symbol: z.string() })).query(async ({ input }) => {
-      return getCurrentPrice(input.symbol);
+      return MarketDataService.getCurrentPrice(input.symbol);
     }),
 
     indicators: protectedProcedure.input(z.object({ symbol: z.string() })).query(async ({ input }) => {
-      return calculateTechnicalIndicators(input.symbol);
+      const { indicators } = await MarketDataService.getDataWithIndicators(input.symbol, '1mo', '1d');
+      return indicators;
     }),
   }),
 

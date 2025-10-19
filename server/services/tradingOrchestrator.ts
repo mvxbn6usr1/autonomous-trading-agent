@@ -9,12 +9,7 @@ import {
   createPerformanceMetric,
 } from "../db";
 import { AgentOrchestrator, TradeSignal } from "./agents";
-import {
-  calculateTechnicalIndicators,
-  getCurrentPrice,
-  updateMarketData,
-  initializeMarketDataStream,
-} from "./marketData";
+import { MarketDataService } from "./marketData";
 import {
   validatePreTradeRisks,
   calculatePositionSize,
@@ -48,7 +43,7 @@ export class TradingOrchestrator {
     }
 
     // Initialize market data stream for the symbol
-    await initializeMarketDataStream(symbol, 10000);
+    // Market data is fetched on-demand from Yahoo Finance
 
     console.log(`[Orchestrator] Strategy ${strategyId} initialized for ${symbol}`);
   }
@@ -116,27 +111,43 @@ export class TradingOrchestrator {
   ): Promise<void> {
     console.log(`[Orchestrator] Running trading cycle for ${strategyId}`);
 
-    // 1. Update market data
-    const marketData = await updateMarketData(symbol);
-    const currentPrice = marketData.close;
+    // 1. Get current market data
+    const currentPrice = await MarketDataService.getCurrentPrice(symbol);
 
     // 2. Monitor existing positions (stop loss / take profit)
     const priceMap = new Map([[symbol, currentPrice]]);
     await monitorPositions(strategyId, priceMap);
 
-    // 3. Calculate technical indicators
-    const indicators = await calculateTechnicalIndicators(symbol);
+    // 3. Get historical data with technical indicators
+    const { data: historicalData, indicators } = await MarketDataService.getDataWithIndicators(symbol, '1mo', '1d');
 
     // 4. Run agent analysis
     const context = {
       symbol,
       currentPrice,
       indicators,
+      strategy: {
+        riskLevel: strategy.riskLevel,
+        maxPositionSize: strategy.maxPositionSize,
+        stopLossPercent: 5, // Default 5% stop loss
+      },
+      portfolio: {
+        totalValue: accountValue,
+        availableCash: accountValue * 0.5, // Assume 50% cash available
+        currentPositions: (await getOpenPositions(strategyId)).length,
+      },
     };
 
-    const { reports, signal } = await this.agentOrchestrator.generateTradeSignal(context);
+    const signal = await this.agentOrchestrator.analyzeAndDecide(context);
 
     // 5. Store agent decisions
+    const reports = [
+      { agentType: 'technical' as const, recommendation: signal.agentReports.technical.recommendation as any, confidence: signal.agentReports.technical.confidence, reasoning: signal.agentReports.technical.reasoning, metrics: signal.agentReports.technical.signals },
+      { agentType: 'fundamental' as const, recommendation: signal.agentReports.fundamental.recommendation as any, confidence: signal.agentReports.fundamental.confidence, reasoning: signal.agentReports.fundamental.reasoning, metrics: signal.agentReports.fundamental.factors },
+      { agentType: 'sentiment' as const, recommendation: signal.agentReports.sentiment.recommendation as any, confidence: signal.agentReports.sentiment.confidence, reasoning: signal.agentReports.sentiment.reasoning, metrics: { sentiment: signal.agentReports.sentiment.sentiment, score: signal.agentReports.sentiment.score } },
+      { agentType: 'trader' as const, recommendation: signal.agentReports.trader.action as any, confidence: signal.agentReports.trader.confidence, reasoning: signal.agentReports.trader.reasoning, metrics: { synthesis: signal.agentReports.trader.synthesis } },
+      { agentType: 'risk_manager' as const, recommendation: (signal.agentReports.riskManager.approved ? 'buy' : 'hold') as any, confidence: 1 - signal.agentReports.riskManager.riskScore, reasoning: signal.agentReports.riskManager.reasoning, metrics: { approved: signal.agentReports.riskManager.approved, violations: signal.agentReports.riskManager.violations } },
+    ];
     for (const report of reports) {
       await createAgentDecision({
         id: randomUUID(),
@@ -184,14 +195,9 @@ export class TradingOrchestrator {
       return;
     }
 
-    // 9. Risk manager validation
+    // 9. Risk manager validation (already done in agent orchestration)
+    const riskValidation = signal.agentReports.riskManager;
     const openPositions = await getOpenPositions(strategyId);
-    const riskValidation = await this.agentOrchestrator.validateTradeWithRisk(
-      signal,
-      openPositions,
-      accountValue,
-      strategy
-    );
 
     await createAuditLog({
       id: randomUUID(),
@@ -317,16 +323,25 @@ export class TradingOrchestrator {
       return { success: false, message: "Strategy not found" };
     }
 
-    const currentPrice = await getCurrentPrice(symbol);
-    const indicators = await calculateTechnicalIndicators(symbol);
+    const currentPrice = await MarketDataService.getCurrentPrice(symbol);
+    const { indicators } = await MarketDataService.getDataWithIndicators(symbol, '1mo', '1d');
 
     if (action === "buy") {
-      // Create manual buy signal
+      // Create manual buy signal with minimal agent reports
       const signal: TradeSignal = {
         action: "buy",
         symbol,
-        confidence: 100, // Manual trades bypass confidence checks
+        confidence: 1.0, // Manual trades have full confidence
         reasoning: "Manual trade initiated by user",
+        agentReports: {
+          technical: { recommendation: 'buy', confidence: 1, signals: {} as any, reasoning: 'Manual override', keyPoints: [] },
+          fundamental: { recommendation: 'buy', confidence: 1, valuation: 'fairly_valued', factors: {} as any, reasoning: 'Manual override', keyPoints: [] },
+          sentiment: { recommendation: 'buy', confidence: 1, sentiment: 'neutral', score: 0, sources: {} as any, reasoning: 'Manual override', keyPoints: [] },
+          bull: { position: 'bull', strength: 1, arguments: [], evidence: [], counterarguments: [], conclusion: 'Manual override' },
+          bear: { position: 'bear', strength: 0, arguments: [], evidence: [], counterarguments: [], conclusion: 'Manual override' },
+          trader: { action: 'buy', confidence: 1, reasoning: 'Manual override', synthesis: 'Manual trade', riskAssessment: 'User initiated' },
+          riskManager: { approved: true, riskScore: 0, violations: [], warnings: [], recommendations: [], reasoning: 'Manual override' },
+        },
       };
 
       const positionSize = calculatePositionSize(signal, currentPrice, accountValue, strategy.maxPositionSize, indicators.atr);
