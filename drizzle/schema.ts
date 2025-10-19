@@ -219,3 +219,94 @@ export const riskAlerts = mysqlTable("riskAlerts", {
 export type RiskAlert = typeof riskAlerts.$inferSelect;
 export type InsertRiskAlert = typeof riskAlerts.$inferInsert;
 
+
+
+/**
+ * Portfolios - Multi-stock portfolio management
+ */
+export const portfolios = mysqlTable("portfolios", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  strategyId: varchar("strategyId", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  targetAllocation: text("targetAllocation"), // JSON: { "AAPL": 20, "MSFT": 30, ... }
+  rebalanceFrequency: mysqlEnum("rebalanceFrequency", ["daily", "weekly", "monthly"]).default("weekly"),
+  maxStocks: int("maxStocks").default(10).notNull(),
+  minCashPercent: int("minCashPercent").default(10).notNull(),
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+}, (table) => ({
+  strategyIdIdx: index("strategyId_idx").on(table.strategyId),
+}));
+
+export type Portfolio = typeof portfolios.$inferSelect;
+export type InsertPortfolio = typeof portfolios.$inferInsert;
+
+/**
+ * Watchlists - Stocks being monitored for entry opportunities
+ */
+export const watchlists = mysqlTable("watchlists", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  strategyId: varchar("strategyId", { length: 64 }).notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  addedAt: timestamp("addedAt").defaultNow(),
+  addedReason: text("addedReason"),
+  targetEntryPrice: int("targetEntryPrice"), // stored as cents
+  targetAllocation: int("targetAllocation"), // percentage
+  priority: mysqlEnum("priority", ["low", "medium", "high"]).default("medium"),
+  status: mysqlEnum("status", ["watching", "triggered", "entered", "rejected"]).default("watching"),
+  lastAnalyzedAt: timestamp("lastAnalyzedAt"),
+  analysisCount: int("analysisCount").default(0),
+}, (table) => ({
+  strategyIdIdx: index("strategyId_idx").on(table.strategyId),
+  symbolIdx: index("symbol_idx").on(table.symbol),
+  statusIdx: index("status_idx").on(table.status),
+}));
+
+export type Watchlist = typeof watchlists.$inferSelect;
+export type InsertWatchlist = typeof watchlists.$inferInsert;
+
+/**
+ * Market scans - Results from market-wide opportunity scans
+ */
+export const marketScans = mysqlTable("marketScans", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  strategyId: varchar("strategyId", { length: 64 }).notNull(),
+  scanType: mysqlEnum("scanType", ["momentum", "value", "growth", "technical", "earnings"]).notNull(),
+  symbol: varchar("symbol", { length: 20 }).notNull(),
+  score: int("score").notNull(), // 0-100
+  signals: text("signals"), // JSON array of signals
+  metrics: text("metrics"), // JSON object of metrics
+  scannedAt: timestamp("scannedAt").defaultNow(),
+  expiresAt: timestamp("expiresAt"),
+}, (table) => ({
+  strategyIdIdx: index("strategyId_idx").on(table.strategyId),
+  symbolIdx: index("symbol_idx").on(table.symbol),
+  scoreIdx: index("score_idx").on(table.score),
+  scannedAtIdx: index("scannedAt_idx").on(table.scannedAt),
+}));
+
+export type MarketScan = typeof marketScans.$inferSelect;
+export type InsertMarketScan = typeof marketScans.$inferInsert;
+
+/**
+ * Portfolio snapshots - Historical portfolio state for performance tracking
+ */
+export const portfolioSnapshots = mysqlTable("portfolioSnapshots", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  portfolioId: varchar("portfolioId", { length: 64 }).notNull(),
+  totalValue: int("totalValue").notNull(), // stored as cents
+  cashValue: int("cashValue").notNull(),
+  positionsValue: int("positionsValue").notNull(),
+  unrealizedPnL: int("unrealizedPnL").notNull(),
+  realizedPnL: int("realizedPnL").notNull(),
+  holdings: text("holdings"), // JSON: [{ symbol, quantity, value, allocation }]
+  snapshotAt: timestamp("snapshotAt").defaultNow(),
+}, (table) => ({
+  portfolioIdIdx: index("portfolioId_idx").on(table.portfolioId),
+  snapshotAtIdx: index("snapshotAt_idx").on(table.snapshotAt),
+}));
+
+export type PortfolioSnapshot = typeof portfolioSnapshots.$inferSelect;
+export type InsertPortfolioSnapshot = typeof portfolioSnapshots.$inferInsert;
+

@@ -27,6 +27,18 @@ import {
   riskAlerts,
   InsertRiskAlert,
   RiskAlert,
+  portfolios,
+  InsertPortfolio,
+  Portfolio,
+  watchlists,
+  InsertWatchlist,
+  Watchlist,
+  marketScans,
+  InsertMarketScan,
+  MarketScan,
+  portfolioSnapshots,
+  InsertPortfolioSnapshot,
+  PortfolioSnapshot,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -423,5 +435,187 @@ export async function getStrategyAlerts(strategyId: string, limit: number = 50):
     .where(eq(riskAlerts.strategyId, strategyId))
     .orderBy(desc(riskAlerts.createdAt))
     .limit(limit);
+}
+
+
+
+// ============= PORTFOLIO OPERATIONS =============
+
+export async function createPortfolio(portfolio: InsertPortfolio): Promise<Portfolio> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(portfolios).values(portfolio);
+  const result = await db.select().from(portfolios).where(eq(portfolios.id, portfolio.id!)).limit(1);
+  return result[0];
+}
+
+export async function getPortfolioByStrategy(strategyId: string): Promise<Portfolio | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db.select().from(portfolios).where(eq(portfolios.strategyId, strategyId)).limit(1);
+  return result[0] || null;
+}
+
+export async function updatePortfolio(id: string, updates: Partial<InsertPortfolio>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(portfolios).set({ ...updates, updatedAt: new Date() }).where(eq(portfolios.id, id));
+}
+
+// ============= WATCHLIST OPERATIONS =============
+
+export async function addToWatchlist(item: InsertWatchlist): Promise<Watchlist> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(watchlists).values(item);
+  const result = await db.select().from(watchlists).where(eq(watchlists.id, item.id!)).limit(1);
+  return result[0];
+}
+
+export async function getWatchlist(strategyId: string, status?: string): Promise<Watchlist[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (status) {
+    return db
+      .select()
+      .from(watchlists)
+      .where(and(eq(watchlists.strategyId, strategyId), eq(watchlists.status, status as any)))
+      .orderBy(desc(watchlists.addedAt));
+  }
+
+  return db.select().from(watchlists).where(eq(watchlists.strategyId, strategyId)).orderBy(desc(watchlists.addedAt));
+}
+
+export async function updateWatchlistItem(id: string, updates: Partial<InsertWatchlist>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(watchlists).set(updates).where(eq(watchlists.id, id));
+}
+
+export async function removeFromWatchlist(id: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(watchlists).where(eq(watchlists.id, id));
+}
+
+export async function getWatchlistBySymbol(strategyId: string, symbol: string): Promise<Watchlist | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(watchlists)
+    .where(and(eq(watchlists.strategyId, strategyId), eq(watchlists.symbol, symbol)))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+// ============= MARKET SCAN OPERATIONS =============
+
+export async function saveMarketScan(scan: InsertMarketScan): Promise<MarketScan> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(marketScans).values(scan);
+  const result = await db.select().from(marketScans).where(eq(marketScans.id, scan.id!)).limit(1);
+  return result[0];
+}
+
+export async function getRecentScans(strategyId: string, scanType?: string, limit: number = 50): Promise<MarketScan[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (scanType) {
+    return db
+      .select()
+      .from(marketScans)
+      .where(and(eq(marketScans.strategyId, strategyId), eq(marketScans.scanType, scanType as any)))
+      .orderBy(desc(marketScans.score), desc(marketScans.scannedAt))
+      .limit(limit);
+  }
+
+  return db
+    .select()
+    .from(marketScans)
+    .where(eq(marketScans.strategyId, strategyId))
+    .orderBy(desc(marketScans.score), desc(marketScans.scannedAt))
+    .limit(limit);
+}
+
+export async function getTopScans(strategyId: string, minScore: number = 70, limit: number = 20): Promise<MarketScan[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(marketScans)
+    .where(and(eq(marketScans.strategyId, strategyId), gte(marketScans.score, minScore)))
+    .orderBy(desc(marketScans.score))
+    .limit(limit);
+}
+
+// ============= PORTFOLIO SNAPSHOT OPERATIONS =============
+
+export async function savePortfolioSnapshot(snapshot: InsertPortfolioSnapshot): Promise<PortfolioSnapshot> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(portfolioSnapshots).values(snapshot);
+  const result = await db.select().from(portfolioSnapshots).where(eq(portfolioSnapshots.id, snapshot.id!)).limit(1);
+  return result[0];
+}
+
+export async function getPortfolioSnapshots(
+  portfolioId: string,
+  startDate?: Date,
+  endDate?: Date,
+  limit: number = 100
+): Promise<PortfolioSnapshot[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (startDate && endDate) {
+    return db
+      .select()
+      .from(portfolioSnapshots)
+      .where(
+        and(
+          eq(portfolioSnapshots.portfolioId, portfolioId),
+          gte(portfolioSnapshots.snapshotAt, startDate),
+          lte(portfolioSnapshots.snapshotAt, endDate)
+        )
+      )
+      .orderBy(desc(portfolioSnapshots.snapshotAt))
+      .limit(limit);
+  }
+
+  return db
+    .select()
+    .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.portfolioId, portfolioId))
+    .orderBy(desc(portfolioSnapshots.snapshotAt))
+    .limit(limit);
+}
+
+export async function getLatestPortfolioSnapshot(portfolioId: string): Promise<PortfolioSnapshot | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(portfolioSnapshots)
+    .where(eq(portfolioSnapshots.portfolioId, portfolioId))
+    .orderBy(desc(portfolioSnapshots.snapshotAt))
+    .limit(1);
+
+  return result[0] || null;
 }
 
