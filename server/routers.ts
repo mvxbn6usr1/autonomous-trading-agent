@@ -21,7 +21,8 @@ import {
   getStrategyAlerts,
   getStrategyPerformance,
 } from "./db";
-import { tradingOrchestrator } from "./services/tradingOrchestrator";
+import { tradingOrchestrator } from './services/tradingOrchestrator';
+import { tradingLoopManager } from './services/tradingLoop';
 import { MarketDataService } from "./services/marketData";
 import { generateComplianceReport, checkRegulatoryCompliance, exportAuditTrail } from "./services/compliance";
 
@@ -363,6 +364,37 @@ export const appRouter = router({
           losingTrades: m.losingTrades,
         }));
       }),
+  }),
+
+  // Trading loop management
+  loop: router({
+    // Start trading loop for a strategy
+    start: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .mutation(async ({ input }) => {
+        await tradingLoopManager.startLoop(input.strategyId);
+        return { success: true };
+      }),
+
+    // Stop trading loop for a strategy
+    stop: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .mutation(async ({ input }) => {
+        tradingLoopManager.stopLoop(input.strategyId);
+        return { success: true };
+      }),
+
+    // Get loop status for a strategy
+    status: protectedProcedure
+      .input(z.object({ strategyId: z.string() }))
+      .query(({ input }) => {
+        return tradingLoopManager.getStrategyStatus(input.strategyId);
+      }),
+
+    // Get all loop statuses
+    allStatus: protectedProcedure.query(() => {
+      return tradingLoopManager.getLoopStatus();
+    }),
   }),
 });
 

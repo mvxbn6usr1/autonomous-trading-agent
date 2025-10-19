@@ -128,6 +128,13 @@ export async function getUserStrategies(userId: string): Promise<Strategy[]> {
   return db.select().from(strategies).where(eq(strategies.userId, userId)).orderBy(desc(strategies.createdAt));
 }
 
+export async function getActiveStrategies(): Promise<Strategy[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db.select().from(strategies).where(eq(strategies.isActive, true));
+}
+
 export async function getStrategy(id: string): Promise<Strategy | undefined> {
   const db = await getDb();
   if (!db) return undefined;
